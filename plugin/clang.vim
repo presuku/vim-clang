@@ -361,6 +361,7 @@ func! s:DiagnosticsWindowOpen(src, diags)
   let l:maxheight = g:clang_diagsopt[l:i+1 : -1]
 
   let l:cbuf = bufnr('%')
+  let l:win_cbuf = winnr()
   " Here uses t:clang_diags_bufnr to keep only one window in a *tab*
   if !exists('t:clang_diags_bufnr') || !bufexists(t:clang_diags_bufnr)
     let t:clang_diags_bufnr = bufnr('ClangDiagnostics@' . l:cbuf, 1)
@@ -439,7 +440,7 @@ func! s:DiagnosticsWindowOpen(src, diags)
 
   " back to current window, aka the driver window
   let t:clang_diags_driver_bufnr = l:cbuf
-  exe bufwinnr(l:cbuf) . 'wincmd w'
+  exe l:win_cbuf . 'wincmd w'
   return t:clang_diags_bufnr
 endf
 "}}}
