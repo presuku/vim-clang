@@ -1151,7 +1151,7 @@ endf
 "       'stderr':  // updated in sync mode
 "     }
 "
-"     b:clang_execute_neojob_id  // used to stop previous job
+"     b:clang_execute_job_id  // used to stop previous job
 "
 " @root Clang root, project directory
 " @clang_options Options appended to clang binary image
@@ -1172,9 +1172,9 @@ func! s:ClangExecute(root, clang_options, line, col)
   if has("nvim")
     call s:PDebug("s:ClangExecute::cmd", l:cmd, 2)
     " try to force stop last job which doesn't exit.
-    if exists('b:clang_execute_neojob_id')
+    if exists('b:clang_execute_job_id')
       try
-        call jobstop(b:clang_execute_neojob_id)
+        call jobstop(b:clang_execute_job_id)
       catch
         " Ignore
       endtry
@@ -1186,7 +1186,7 @@ func! s:ClangExecute(root, clang_options, line, col)
     let l:Handler = function('ClangExecuteNeoJobHandler')
     let l:opts = {'on_stdout': l:Handler, 'on_stderr': l:Handler, 'on_exit': l:Handler}
     let l:jobid = jobstart(l:argv, l:opts)
-    let b:clang_execute_neojob_id = l:jobid
+    let b:clang_execute_job_id = l:jobid
 
     if l:jobid > 0
       call s:PDebug("s:ClangExecute::jobid", l:jobid, 2)
@@ -1195,6 +1195,43 @@ func! s:ClangExecute(root, clang_options, line, col)
     else
       call s:PError("s:ClangExecute", "Invalid jobid >> ".
            \ (l:jobid < 0 ? "Invalid clang_sh_exec" : "Job table is full or invalid arguments"))
+    endif
+  elseif has('job') && has('channel')
+    call s:PDebug("s:ClangExecute::cmd", l:cmd, 2)
+    " try to force stop last job which doesn't exit.
+    if exists('b:clang_execute_job_id')
+          \ && job_status(b:clang_execute_job_id) == 'run'
+      try
+        let ch = job_getchannel(b:clang_execute_job_id)
+        call ch_sendraw(ch, '\n')
+        call job_stop(b:clang_execute_job_id, 'term')
+        unlet b:clang_execute_job_id
+      catch
+        " Ignore
+      endtry
+    endif
+
+    " For debug
+    " call ch_logfile('/tmp/vim8_clang_channel.log', 'w')
+
+    let l:argv = l:cmd
+    let l:opts = {}
+    let l:opts.mode = 'raw'
+    let l:opts.in_io = 'buffer'
+    let l:opts.in_buf = bufnr('%')
+    let l:opts.out_cb = {ch, data -> ClangExecuteNeoJobHandler(ch, split(data, "\n", 1), 'stdout')}
+    let l:opts.err_cb = {ch, data -> ClangExecuteNeoJobHandler(ch, split(data, "\n", 1), 'stderr')}
+    let l:opts.exit_cb = {ch, data -> ClangExecuteNeoJobHandler(ch, data, 'exit')}
+    let l:opts.stoponexit = 'kill'
+    let l:jobid = job_start(l:argv, l:opts)
+    let b:clang_execute_job_id = l:jobid
+
+    if job_status(l:jobid) == 'run'
+      call s:PDebug("s:ClangExecute::jobid", job_status(l:jobid), 2)
+      " call ch_close_in(job_getchannel(l:jobid))
+    else
+      call s:PError("s:ClangExecute", "Invalid jobid >> ".  job_status(l:jobid))
+      unlet b:clang_execute_job_id
     endif
   elseif !exists('v:servername') || empty(v:servername)
     let b:clang_state['state'] = 'ready'
